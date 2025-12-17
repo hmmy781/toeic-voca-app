@@ -94,12 +94,64 @@ else:
     st.progress(index / total)
     st.caption(f"진행 상황: {index + 1} / {total}")
 
-    # 단어 카드 디자인
+    # 진행률 (Progress Bar)
+progress = (index / total)
+st.progress(progress)
+
+# --- 단어 카드 (CSS 적용) ---
+st.markdown(f"""
+<div style="
+    padding: 30px;
+    border-radius: 15px;
+    background-color: #f9f9f9;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+    text-align: center;
+    margin: 20px 0;">
+    <p style="color: #666; font-size: 14px;">문제 {index + 1} / {total}</p>
+    <h1 style="color: #333; font-size: 48px; margin: 10px 0;">{word_data['Word']}</h1>
+</div>
+""", unsafe_allow_html=True)
+
+# 발음 재생
+tts = gTTS(text=word_data['Word'], lang='en')
+mp3_fp = io.BytesIO()
+tts.write_to_fp(mp3_fp)
+st.audio(mp3_fp, format='audio/mp3')
+
+# --- 버튼 UI 개선 ---
+if not st.session_state['show_meaning']:
+    # 버튼을 가운데 정렬 느낌으로 꽉 차게
+    if st.button("🔍 뜻 확인하기", use_container_width=True, type="primary"):
+        st.session_state['show_meaning'] = True
+        st.rerun()
+else:
     st.markdown(f"""
-    <div style="text-align: center; padding: 50px; background-color: #f0f2f6; border-radius: 10px; margin-bottom: 20px;">
-        <h1 style="color: #333;">{word_data['Word']}</h1>
+    <div style="text-align: center; margin-bottom: 20px; padding: 10px; background-color: #e8f5e9; border-radius: 10px;">
+        <h3 style="color: #2e7d32; margin:0;">{word_data['Meaning']}</h3>
     </div>
     """, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("✅ 알아요 (O)", use_container_width=True):
+            st.session_state['current_index'] += 1
+            st.session_state['show_meaning'] = False
+            # 칭찬 효과 (풍선) - 가끔씩 터지게 하려면 random 조건 추가
+            if random.random() > 0.7: 
+                st.balloons()
+            if st.session_state['current_index'] >= total:
+                st.session_state['study_finished'] = True
+            st.rerun()
+
+    with col2:
+        if st.button("❌ 몰라요 (X)", use_container_width=True):
+            st.session_state['wrong_answers'].append(word_data)
+            st.toast(f"🥲 오답노트에 추가했어요! ({len(st.session_state['wrong_answers'])}개째)")
+            st.session_state['current_index'] += 1
+            st.session_state['show_meaning'] = False
+            if st.session_state['current_index'] >= total:
+                st.session_state['study_finished'] = True
+            st.rerun()
 
     # 발음 듣기 (gTTS -> 메모리 -> 오디오 플레이어)
     # 매번 생성하면 느리므로 필요할 때만 생성하거나 그냥 둠 (웹에서는 자동재생이 브라우저 정책상 막힐 수 있어 플레이어 표시)
