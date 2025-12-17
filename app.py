@@ -8,21 +8,47 @@ import io
 # --- 설정 ---
 st.set_page_config(page_title="토익 영단어장", page_icon="📚")
 
-# CSS 스타일 적용 (카드 디자인, 버튼 꾸미기)
+# CSS 스타일 (카드, 리스트, 탭 디자인)
 st.markdown("""
     <style>
-    .word-card {
-        padding: 30px;
+    /* 전체 폰트 및 배경 */
+    .stApp {
+        background-color: #ffffff;
+    }
+    /* 단어 공부 탭의 리스트 스타일 */
+    .study-list-item {
+        padding: 15px 20px;
+        background-color: #f8f9fa;
+        border-radius: 10px;
+        border-left: 5px solid #1f77b4;
+        margin-bottom: 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .study-word {
+        font-size: 20px;
+        font-weight: bold;
+        color: #333;
+    }
+    .study-meaning {
+        font-size: 18px;
+        color: #555;
+    }
+    /* 시험 보기 탭의 카드 스타일 */
+    .quiz-card {
+        padding: 40px;
         border-radius: 15px;
-        background-color: #f9f9f9;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        background-color: #fff;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         text-align: center;
         margin: 20px 0;
         border: 2px solid #e0e0e0;
     }
-    .word-text {
+    .quiz-word-text {
         color: #333; 
-        font-size: 48px; 
+        font-size: 50px; 
         font-weight: bold;
         margin: 10px 0;
     }
@@ -40,7 +66,7 @@ st.markdown("""
         font-weight: bold;
         margin: 0;
     }
-    /* 버튼 스타일 미세 조정 */
+    /* 버튼 높이 조정 */
     .stButton button {
         height: 50px;
         font-size: 18px;
@@ -65,23 +91,25 @@ def load_data():
 
 df = load_data()
 
-# --- 사이드바 ---
+# --- 사이드바 (공통 설정) ---
 st.sidebar.title("⚙️ 설정")
 
 if df is not None:
+    # Day 선택
     days = sorted(df['Day'].unique().tolist(), key=lambda x: int(x) if x.isdigit() else 999)
     selected_day = st.sidebar.selectbox("공부할 DAY를 선택하세요", days)
     
-    # [추가됨] 자동 재생 토글 스위치
-    auto_play_on = st.sidebar.toggle("🔊 발음 자동 재생", value=True)
+    # 해당 Day 데이터 추출
+    day_words_all = df[df['Day'] == selected_day][['Word', 'Meaning']].to_dict('records')
     
     st.sidebar.markdown("---")
+    st.sidebar.caption(f"총 단어 수: {len(day_words_all)}개")
     
-    if st.sidebar.button("🚀 학습 시작 / 재시작"):
-        day_words = df[df['Day'] == selected_day][['Word', 'Meaning']].to_dict('records')
-        random.shuffle(day_words)
-        
-        st.session_state['quiz_data'] = day_words
+    # 시험 초기화 버튼 (시험 탭에서만 유효)
+    if st.sidebar.button("🔄 시험 초기화 / 다시 시작"):
+        # 랜덤 섞어서 세션에 저장
+        random.shuffle(day_words_all)
+        st.session_state['quiz_data'] = day_words_all
         st.session_state['current_index'] = 0
         st.session_state['wrong_answers'] = []
         st.session_state['show_meaning'] = False
@@ -91,92 +119,114 @@ else:
     st.error("CSV 파일을 찾을 수 없습니다.")
     st.stop()
 
-# --- 메인 화면 ---
-st.title(f"📖 Day {selected_day} 집중 학습")
+# --- 메인 화면: 탭 분리 ---
+st.title(f"📖 Day {selected_day} 마스터하기")
 
-if 'quiz_data' not in st.session_state:
-    st.info("👈 왼쪽 사이드바에서 [학습 시작] 버튼을 눌러주세요!")
+# 탭 생성 (여기가 핵심!)
+tab1, tab2 = st.tabs(["👀 단어 공부 (List)", "📝 실전 시험 (Test)"])
 
-elif st.session_state['study_finished']:
-    st.balloons()
-    st.success("🎉 학습 완료! 수고하셨습니다.")
-    st.metric("틀린 단어", f"{len(st.session_state['wrong_answers'])}개")
+# ==========================================
+# 탭 1: 단어 공부 모드 (리스트 보기)
+# ==========================================
+with tab1:
+    st.header("단어 목록 훑어보기")
+    st.caption("시험 보기 전에 단어와 뜻을 가볍게 읽어보세요.")
     
-    if st.session_state['wrong_answers']:
-        st.write("### ❌ 오답 노트")
-        wrong_df = pd.DataFrame(st.session_state['wrong_answers'])
-        st.table(wrong_df)
-        
-        csv = wrong_df.to_csv(index=False).encode('utf-8-sig')
-        st.download_button("오답노트 다운로드 (CSV)", csv, 'my_wrong_note.csv', 'text/csv')
-    else:
-        st.write("완벽합니다! 💯")
-    
-    if st.button("다시 하기"):
-        st.session_state['study_finished'] = False
-        st.session_state['current_index'] = 0
-        st.session_state['wrong_answers'] = []
-        random.shuffle(st.session_state['quiz_data'])
-        st.rerun()
-
-else:
-    # 현재 문제 정보 가져오기
-    index = st.session_state['current_index']
-    total = len(st.session_state['quiz_data'])
-    word_data = st.session_state['quiz_data'][index]
-
-    # 진행바 표시
-    progress = (index / total)
-    st.progress(progress)
-    st.caption(f"진행 상황: {index + 1} / {total}")
-
-    # 단어 카드
-    st.markdown(f"""
-    <div class="word-card">
-        <div class="word-text">{word_data['Word']}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # 발음 생성
-    tts = gTTS(text=word_data['Word'], lang='en')
-    mp3_fp = io.BytesIO()
-    tts.write_to_fp(mp3_fp)
-    
-    # [수정됨] 자동 재생 처리
-    # st.audio에 autoplay 옵션을 넣고, key를 매번 바꿔주어(index 이용) 단어가 바뀔 때마다 재생되게 함
-    st.audio(mp3_fp, format='audio/mp3', autoplay=auto_play_on, start_time=0)
-
-    # 버튼 영역
-    if not st.session_state['show_meaning']:
-        # [수정됨] type="primary" 삭제 -> 기본 회색/흰색 버튼으로 변경 (눈이 편안함)
-        if st.button("🔍 뜻 확인하기", use_container_width=True):
-            st.session_state['show_meaning'] = True
-            st.rerun()
-    else:
-        # 뜻 보여주기
+    # 스크롤 가능한 리스트 형태로 보여주기
+    for item in day_words_all:
         st.markdown(f"""
-        <div class="meaning-box">
-            <p class="meaning-text">{word_data['Meaning']}</p>
+        <div class="study-list-item">
+            <span class="study-word">{item['Word']}</span>
+            <span class="study-meaning">{item['Meaning']}</span>
         </div>
         """, unsafe_allow_html=True)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("✅ 알아요 (O)", use_container_width=True):
-                st.session_state['current_index'] += 1
-                st.session_state['show_meaning'] = False
-                if random.random() > 0.8: 
-                    st.toast("잘하고 있어요! 👍")
-                if st.session_state['current_index'] >= total:
-                    st.session_state['study_finished'] = True
-                st.rerun()
 
-        with col2:
-            if st.button("❌ 몰라요 (X)", use_container_width=True):
-                st.session_state['wrong_answers'].append(word_data)
-                st.toast(f"🥲 오답노트 추가! (현재 {len(st.session_state['wrong_answers'])}개)")
-                st.session_state['current_index'] += 1
-                st.session_state['show_meaning'] = False
-                if st.session_state['current_index'] >= total:
-                    st.session_state['study_finished'] = True
+# ==========================================
+# 탭 2: 시험 보기 모드 (기존 퀴즈 기능)
+# ==========================================
+with tab2:
+    # 세션 상태 초기화 (처음 들어왔을 때)
+    if 'quiz_data' not in st.session_state:
+        st.info("👈 왼쪽 사이드바에서 [시험 초기화] 버튼을 눌러 시작하세요!")
+    
+    # 학습 완료 상태
+    elif st.session_state['study_finished']:
+        st.balloons()
+        st.success("🎉 시험 종료! 결과가 나왔습니다.")
+        
+        # 성적표
+        score = len(st.session_state['quiz_data']) - len(st.session_state['wrong_answers'])
+        total_q = len(st.session_state['quiz_data'])
+        st.metric("내 점수", f"{score} / {total_q}점")
+
+        if st.session_state['wrong_answers']:
+            st.write("### ❌ 틀린 문제 (오답노트)")
+            wrong_df = pd.DataFrame(st.session_state['wrong_answers'])
+            st.table(wrong_df)
+            
+            csv = wrong_df.to_csv(index=False).encode('utf-8-sig')
+            st.download_button("오답노트 다운로드 (CSV)", csv, 'wrong_notes.csv', 'text/csv')
+        else:
+            st.write("완벽합니다! 💯 하나도 틀리지 않았어요.")
+            
+    # 퀴즈 진행 상태
+    else:
+        # 설정: 자동 재생 토글 (시험 볼 때만 필요하므로 여기 배치)
+        auto_play = st.toggle("🔊 문제 나올 때 발음 자동 재생", value=True)
+        st.divider()
+
+        # 현재 문제 데이터
+        index = st.session_state['current_index']
+        total = len(st.session_state['quiz_data'])
+        word_data = st.session_state['quiz_data'][index]
+
+        # 진행바
+        st.progress((index / total))
+        st.caption(f"문제 {index + 1} / {total}")
+
+        # 단어 카드
+        st.markdown(f"""
+        <div class="quiz-card">
+            <div class="quiz-word-text">{word_data['Word']}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # 발음 재생 로직
+        tts = gTTS(text=word_data['Word'], lang='en')
+        mp3_fp = io.BytesIO()
+        tts.write_to_fp(mp3_fp)
+        st.audio(mp3_fp, format='audio/mp3', autoplay=auto_play, start_time=0)
+
+        # 버튼 인터페이스
+        if not st.session_state['show_meaning']:
+            # 뜻 확인 버튼
+            if st.button("🔍 정답 확인", use_container_width=True):
+                st.session_state['show_meaning'] = True
                 st.rerun()
+        else:
+            # 뜻 표시
+            st.markdown(f"""
+            <div class="meaning-box">
+                <p class="meaning-text">{word_data['Meaning']}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            col1, col2 = st.columns(2)
+            # O/X 버튼
+            with col1:
+                if st.button("⭕ 맞았음", use_container_width=True):
+                    st.session_state['current_index'] += 1
+                    st.session_state['show_meaning'] = False
+                    if st.session_state['current_index'] >= total:
+                        st.session_state['study_finished'] = True
+                    st.rerun()
+            
+            with col2:
+                if st.button("❌ 틀렸음", use_container_width=True):
+                    st.session_state['wrong_answers'].append(word_data)
+                    st.toast(f"🥲 오답노트 저장! ({len(st.session_state['wrong_answers'])}개째)")
+                    st.session_state['current_index'] += 1
+                    st.session_state['show_meaning'] = False
+                    if st.session_state['current_index'] >= total:
+                        st.session_state['study_finished'] = True
+                    st.rerun()
