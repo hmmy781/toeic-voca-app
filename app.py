@@ -91,11 +91,11 @@ def load_data():
 
 df = load_data()
 
-# --- 사이드바 (공통 설정) ---
+# --- 사이드바 (설정 영역) ---
 st.sidebar.title("⚙️ 설정")
 
 if df is not None:
-    # Day 선택
+    # 1. Day 선택
     days = sorted(df['Day'].unique().tolist(), key=lambda x: int(x) if x.isdigit() else 999)
     selected_day = st.sidebar.selectbox("공부할 DAY를 선택하세요", days)
     
@@ -103,11 +103,14 @@ if df is not None:
     day_words_all = df[df['Day'] == selected_day][['Word', 'Meaning']].to_dict('records')
     
     st.sidebar.markdown("---")
+    
+    # 2. [위치 이동됨] 발음 자동 재생 토글
+    auto_play = st.sidebar.toggle("🔊 발음 자동 재생 (시험용)", value=True)
+    
     st.sidebar.caption(f"총 단어 수: {len(day_words_all)}개")
     
-    # 시험 초기화 버튼 (시험 탭에서만 유효)
-    if st.sidebar.button("🔄 시험 시작"):
-        # 랜덤 섞어서 세션에 저장
+    # 3. 시험 초기화 버튼
+    if st.sidebar.button("🔄 시험 초기화 / 다시 시작"):
         random.shuffle(day_words_all)
         st.session_state['quiz_data'] = day_words_all
         st.session_state['current_index'] = 0
@@ -122,7 +125,7 @@ else:
 # --- 메인 화면: 탭 분리 ---
 st.title(f"📖 Day {selected_day} 마스터하기")
 
-# 탭 생성 (여기가 핵심!)
+# 탭 생성
 tab1, tab2 = st.tabs(["👀 단어 공부 (List)", "📝 실전 시험 (Test)"])
 
 # ==========================================
@@ -132,7 +135,6 @@ with tab1:
     st.header("단어 목록 훑어보기")
     st.caption("시험 보기 전에 단어와 뜻을 가볍게 읽어보세요.")
     
-    # 스크롤 가능한 리스트 형태로 보여주기
     for item in day_words_all:
         st.markdown(f"""
         <div class="study-list-item">
@@ -142,19 +144,16 @@ with tab1:
         """, unsafe_allow_html=True)
 
 # ==========================================
-# 탭 2: 시험 보기 모드 (기존 퀴즈 기능)
+# 탭 2: 시험 보기 모드 (퀴즈 기능)
 # ==========================================
 with tab2:
-    # 세션 상태 초기화 (처음 들어왔을 때)
     if 'quiz_data' not in st.session_state:
         st.info("👈 왼쪽 사이드바에서 [시험 초기화] 버튼을 눌러 시작하세요!")
     
-    # 학습 완료 상태
     elif st.session_state['study_finished']:
         st.balloons()
         st.success("🎉 시험 종료! 결과가 나왔습니다.")
         
-        # 성적표
         score = len(st.session_state['quiz_data']) - len(st.session_state['wrong_answers'])
         total_q = len(st.session_state['quiz_data'])
         st.metric("내 점수", f"{score} / {total_q}점")
@@ -169,12 +168,7 @@ with tab2:
         else:
             st.write("완벽합니다! 💯 하나도 틀리지 않았어요.")
             
-    # 퀴즈 진행 상태
     else:
-        # 설정: 자동 재생 토글 (시험 볼 때만 필요하므로 여기 배치)
-        auto_play = st.toggle("🔊 문제 나올 때 발음 자동 재생", value=True)
-        st.divider()
-
         # 현재 문제 데이터
         index = st.session_state['current_index']
         total = len(st.session_state['quiz_data'])
@@ -191,7 +185,7 @@ with tab2:
         </div>
         """, unsafe_allow_html=True)
 
-        # 발음 재생 로직
+        # 발음 재생 (사이드바의 auto_play 변수 사용)
         tts = gTTS(text=word_data['Word'], lang='en')
         mp3_fp = io.BytesIO()
         tts.write_to_fp(mp3_fp)
@@ -199,12 +193,10 @@ with tab2:
 
         # 버튼 인터페이스
         if not st.session_state['show_meaning']:
-            # 뜻 확인 버튼
             if st.button("🔍 정답 확인", use_container_width=True):
                 st.session_state['show_meaning'] = True
                 st.rerun()
         else:
-            # 뜻 표시
             st.markdown(f"""
             <div class="meaning-box">
                 <p class="meaning-text">{word_data['Meaning']}</p>
@@ -212,7 +204,6 @@ with tab2:
             """, unsafe_allow_html=True)
             
             col1, col2 = st.columns(2)
-            # O/X 버튼
             with col1:
                 if st.button("⭕ 맞았음", use_container_width=True):
                     st.session_state['current_index'] += 1
@@ -230,4 +221,3 @@ with tab2:
                     if st.session_state['current_index'] >= total:
                         st.session_state['study_finished'] = True
                     st.rerun()
-
