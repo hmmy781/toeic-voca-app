@@ -129,19 +129,35 @@ st.title(f"📖 Day {selected_day} 마스터하기")
 tab1, tab2 = st.tabs(["👀 단어 공부 (List)", "📝 실전 시험 (Test)"])
 
 # ==========================================
-# 탭 1: 단어 공부 모드 (리스트 보기)
+# 탭 1: 단어 공부 모드 (리스트 보기 + 발음 듣기)
 # ==========================================
 with tab1:
     st.header("단어 목록 훑어보기")
-    st.caption("시험 보기 전에 단어와 뜻을 가볍게 읽어보세요.")
+    st.caption("플레이 버튼(▶)을 누르면 발음을 들을 수 있어요.")
     
     for item in day_words_all:
-        st.markdown(f"""
-        <div class="study-list-item">
-            <span class="study-word">{item['Word']}</span>
-            <span class="study-meaning">{item['Meaning']}</span>
-        </div>
-        """, unsafe_allow_html=True)
+        # 화면을 좌우로 분할 (왼쪽: 글자, 오른쪽: 오디오)
+        col1, col2 = st.columns([0.7, 0.3])
+        
+        with col1:
+            # 기존 디자인 유지
+            st.markdown(f"""
+            <div class="study-list-item">
+                <span class="study-word">{item['Word']}</span>
+                <span class="study-meaning">{item['Meaning']}</span>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        with col2:
+            # 각 단어별 오디오 생성 (리스트 로딩 시 약간의 시간이 걸릴 수 있음)
+            try:
+                tts = gTTS(text=item['Word'], lang='en')
+                mp3_fp = io.BytesIO()
+                tts.write_to_fp(mp3_fp)
+                # 오디오 플레이어 표시 (여백 조정을 위해 padding 추가 가능)
+                st.audio(mp3_fp, format='audio/mp3')
+            except:
+                st.error("발음 로딩 실패")
 
 # ==========================================
 # 탭 2: 시험 보기 모드 (퀴즈 기능)
@@ -221,4 +237,5 @@ with tab2:
                     if st.session_state['current_index'] >= total:
                         st.session_state['study_finished'] = True
                     st.rerun()
+
 
