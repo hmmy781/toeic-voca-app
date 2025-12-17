@@ -110,7 +110,7 @@ if df is not None:
     st.sidebar.caption(f"총 단어 수: {len(day_words_all)}개")
     
     # 3. 시험 초기화 버튼
-    if st.sidebar.button("🔄 시험 초기화 / 다시 시작"):
+    if st.sidebar.button("🔄 시험 시작"):
         random.shuffle(day_words_all)
         st.session_state['quiz_data'] = day_words_all
         st.session_state['current_index'] = 0
@@ -221,3 +221,4 @@ with tab2:
                     if st.session_state['current_index'] >= total:
                         st.session_state['study_finished'] = True
                     st.rerun()
+
