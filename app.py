@@ -6,24 +6,53 @@ from gtts import gTTS
 import io
 
 # --- 설정 ---
-# 1. 페이지 기본 설정
 st.set_page_config(page_title="토익 영단어장", page_icon="📚")
 
-# 2. 데이터 로드 함수 (캐싱 사용으로 속도 향상)
+# CSS 스타일 적용 (카드 디자인, 버튼 꾸미기)
+st.markdown("""
+    <style>
+    .word-card {
+        padding: 30px;
+        border-radius: 15px;
+        background-color: #f9f9f9;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        text-align: center;
+        margin: 20px 0;
+        border: 2px solid #e0e0e0;
+    }
+    .word-text {
+        color: #333; 
+        font-size: 48px; 
+        font-weight: bold;
+        margin: 10px 0;
+    }
+    .meaning-box {
+        text-align: center; 
+        margin-bottom: 20px; 
+        padding: 15px; 
+        background-color: #e8f5e9; 
+        border-radius: 10px;
+        border: 1px solid #c8e6c9;
+    }
+    .meaning-text {
+        color: #2e7d32; 
+        font-size: 24px;
+        font-weight: bold;
+        margin: 0;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# 1. 데이터 로드 함수
 @st.cache_data
 def load_data():
     try:
-        # csv 파일 경로 (현재 파일 위치 기준)
         script_dir = os.path.dirname(os.path.abspath(__file__))
         csv_path = os.path.join(script_dir, 'toeic_words.csv')
-        
-        # 인코딩 처리
         try:
             df = pd.read_csv(csv_path, encoding='utf-8-sig')
         except:
             df = pd.read_csv(csv_path, encoding='cp949')
-        
-        # Day를 문자열로 변환 (필터링 용이하게)
         df['Day'] = df['Day'].astype(str)
         return df
     except Exception as e:
@@ -31,163 +60,108 @@ def load_data():
 
 df = load_data()
 
-# --- 사이드바: 설정 ---
+# --- 사이드바 ---
 st.sidebar.title("⚙️ 설정")
 if df is not None:
-    # Day 목록 가져오기 (숫자 정렬)
     days = sorted(df['Day'].unique().tolist(), key=lambda x: int(x) if x.isdigit() else 999)
     selected_day = st.sidebar.selectbox("공부할 DAY를 선택하세요", days)
     
-    # 학습 모드 초기화 버튼
-    if st.sidebar.button("학습 시작 / 재시작"):
-        # 선택한 Day의 단어들만 뽑아서 섞기
+    if st.sidebar.button("🚀 학습 시작 / 재시작"):
         day_words = df[df['Day'] == selected_day][['Word', 'Meaning']].to_dict('records')
         random.shuffle(day_words)
         
-        # 세션 상태(Session State) 초기화
         st.session_state['quiz_data'] = day_words
         st.session_state['current_index'] = 0
         st.session_state['wrong_answers'] = []
         st.session_state['show_meaning'] = False
         st.session_state['study_finished'] = False
+        st.rerun()
 else:
-    st.error("CSV 파일을 찾을 수 없습니다. 같은 폴더에 'toeic_words.csv'를 넣어주세요.")
+    st.error("CSV 파일을 찾을 수 없습니다.")
     st.stop()
 
-# --- 메인 화면 로직 ---
-st.title(f"📖 Day {selected_day} 단어 학습")
+# --- 메인 화면 ---
+st.title(f"📖 Day {selected_day} 집중 학습")
 
-# 1. 초기 상태일 때 (데이터가 아직 안 로드되었거나 시작 전)
 if 'quiz_data' not in st.session_state:
-    st.info("👈 왼쪽 사이드바에서 DAY를 선택하고 [학습 시작] 버튼을 눌러주세요!")
+    st.info("👈 왼쪽 사이드바에서 [학습 시작] 버튼을 눌러주세요!")
 
-# 2. 학습 완료 상태
 elif st.session_state['study_finished']:
-    st.success("🎉 학습이 끝났습니다!")
-    st.metric("틀린 개수", f"{len(st.session_state['wrong_answers'])}개")
+    st.balloons()
+    st.success("🎉 학습 완료! 수고하셨습니다.")
+    st.metric("틀린 단어", f"{len(st.session_state['wrong_answers'])}개")
     
     if st.session_state['wrong_answers']:
         st.write("### ❌ 오답 노트")
         wrong_df = pd.DataFrame(st.session_state['wrong_answers'])
         st.table(wrong_df)
         
-        # CSV 다운로드 버튼
         csv = wrong_df.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            label="오답노트 다운로드 (CSV)",
-            data=csv,
-            file_name='my_wrong_note.csv',
-            mime='text/csv',
-        )
+        st.download_button("오답노트 다운로드 (CSV)", csv, 'my_wrong_note.csv', 'text/csv')
     else:
-        st.balloons()
-        st.write("완벽합니다! 틀린 단어가 없어요. 💯")
+        st.write("완벽합니다! 💯")
+    
+    if st.button("다시 하기"):
+        st.session_state['study_finished'] = False
+        st.session_state['current_index'] = 0
+        st.session_state['wrong_answers'] = []
+        random.shuffle(st.session_state['quiz_data'])
+        st.rerun()
 
-# 3. 퀴즈 진행 상태
 else:
-    # 현재 단어 가져오기
+    # --- [중요] 변수 정의 (에러가 났던 부분 해결!) ---
     index = st.session_state['current_index']
     total = len(st.session_state['quiz_data'])
     word_data = st.session_state['quiz_data'][index]
-    
-    # 진행률 표시
-    st.progress(index / total)
+
+    # 진행바 표시
+    progress = (index / total)
+    st.progress(progress)
     st.caption(f"진행 상황: {index + 1} / {total}")
 
-    # 진행률 (Progress Bar)
-progress = (index / total)
-st.progress(progress)
-
-# --- 단어 카드 (CSS 적용) ---
-st.markdown(f"""
-<div style="
-    padding: 30px;
-    border-radius: 15px;
-    background-color: #f9f9f9;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-    text-align: center;
-    margin: 20px 0;">
-    <p style="color: #666; font-size: 14px;">문제 {index + 1} / {total}</p>
-    <h1 style="color: #333; font-size: 48px; margin: 10px 0;">{word_data['Word']}</h1>
-</div>
-""", unsafe_allow_html=True)
-
-# 발음 재생
-tts = gTTS(text=word_data['Word'], lang='en')
-mp3_fp = io.BytesIO()
-tts.write_to_fp(mp3_fp)
-st.audio(mp3_fp, format='audio/mp3')
-
-# --- 버튼 UI 개선 ---
-if not st.session_state['show_meaning']:
-    # 버튼을 가운데 정렬 느낌으로 꽉 차게
-    if st.button("🔍 뜻 확인하기", use_container_width=True, type="primary"):
-        st.session_state['show_meaning'] = True
-        st.rerun()
-else:
+    # 단어 카드 (CSS 적용됨)
     st.markdown(f"""
-    <div style="text-align: center; margin-bottom: 20px; padding: 10px; background-color: #e8f5e9; border-radius: 10px;">
-        <h3 style="color: #2e7d32; margin:0;">{word_data['Meaning']}</h3>
+    <div class="word-card">
+        <div class="word-text">{word_data['Word']}</div>
     </div>
     """, unsafe_allow_html=True)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("✅ 알아요 (O)", use_container_width=True):
-            st.session_state['current_index'] += 1
-            st.session_state['show_meaning'] = False
-            # 칭찬 효과 (풍선) - 가끔씩 터지게 하려면 random 조건 추가
-            if random.random() > 0.7: 
-                st.balloons()
-            if st.session_state['current_index'] >= total:
-                st.session_state['study_finished'] = True
-            st.rerun()
 
-    with col2:
-        if st.button("❌ 몰라요 (X)", use_container_width=True):
-            st.session_state['wrong_answers'].append(word_data)
-            st.toast(f"🥲 오답노트에 추가했어요! ({len(st.session_state['wrong_answers'])}개째)")
-            st.session_state['current_index'] += 1
-            st.session_state['show_meaning'] = False
-            if st.session_state['current_index'] >= total:
-                st.session_state['study_finished'] = True
-            st.rerun()
-
-    # 발음 듣기 (gTTS -> 메모리 -> 오디오 플레이어)
-    # 매번 생성하면 느리므로 필요할 때만 생성하거나 그냥 둠 (웹에서는 자동재생이 브라우저 정책상 막힐 수 있어 플레이어 표시)
+    # 발음 듣기
     tts = gTTS(text=word_data['Word'], lang='en')
     mp3_fp = io.BytesIO()
     tts.write_to_fp(mp3_fp)
     st.audio(mp3_fp, format='audio/mp3')
 
-    # 뜻 확인하기 버튼
+    # 버튼 영역
     if not st.session_state['show_meaning']:
-        if st.button("뜻 확인하기 👀", use_container_width=True):
+        if st.button("🔍 뜻 확인하기", use_container_width=True, type="primary"):
             st.session_state['show_meaning'] = True
-            st.rerun() # 화면 새로고침
-
-    # 뜻 확인 후 O/X 선택
+            st.rerun()
     else:
-        st.markdown(f"### 💡 뜻: **{word_data['Meaning']}**")
+        # 뜻 보여주기
+        st.markdown(f"""
+        <div class="meaning-box">
+            <p class="meaning-text">{word_data['Meaning']}</p>
+        </div>
+        """, unsafe_allow_html=True)
         
         col1, col2 = st.columns(2)
-        
         with col1:
-            if st.button("✅ 맞음 (Next)", use_container_width=True):
+            if st.button("✅ 알아요 (O)", use_container_width=True):
                 st.session_state['current_index'] += 1
                 st.session_state['show_meaning'] = False
-                # 마지막 문제인지 확인
+                if random.random() > 0.8: # 가끔 칭찬 효과
+                    st.toast("잘하고 있어요! 👍")
                 if st.session_state['current_index'] >= total:
                     st.session_state['study_finished'] = True
                 st.rerun()
 
         with col2:
-            if st.button("❌ 틀림 (Add to Note)", use_container_width=True):
-                # 오답 목록에 추가
+            if st.button("❌ 몰라요 (X)", use_container_width=True):
                 st.session_state['wrong_answers'].append(word_data)
+                st.toast(f"🥲 오답노트 추가! (현재 {len(st.session_state['wrong_answers'])}개)")
                 st.session_state['current_index'] += 1
                 st.session_state['show_meaning'] = False
-                # 마지막 문제인지 확인
                 if st.session_state['current_index'] >= total:
                     st.session_state['study_finished'] = True
                 st.rerun()
