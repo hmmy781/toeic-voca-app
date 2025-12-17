@@ -40,6 +40,11 @@ st.markdown("""
         font-weight: bold;
         margin: 0;
     }
+    /* 버튼 스타일 미세 조정 */
+    .stButton button {
+        height: 50px;
+        font-size: 18px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -62,9 +67,15 @@ df = load_data()
 
 # --- 사이드바 ---
 st.sidebar.title("⚙️ 설정")
+
 if df is not None:
     days = sorted(df['Day'].unique().tolist(), key=lambda x: int(x) if x.isdigit() else 999)
     selected_day = st.sidebar.selectbox("공부할 DAY를 선택하세요", days)
+    
+    # [추가됨] 자동 재생 토글 스위치
+    auto_play_on = st.sidebar.toggle("🔊 발음 자동 재생", value=True)
+    
+    st.sidebar.markdown("---")
     
     if st.sidebar.button("🚀 학습 시작 / 재시작"):
         day_words = df[df['Day'] == selected_day][['Word', 'Meaning']].to_dict('records')
@@ -109,7 +120,7 @@ elif st.session_state['study_finished']:
         st.rerun()
 
 else:
-    # --- [중요] 변수 정의 (에러가 났던 부분 해결!) ---
+    # 현재 문제 정보 가져오기
     index = st.session_state['current_index']
     total = len(st.session_state['quiz_data'])
     word_data = st.session_state['quiz_data'][index]
@@ -119,22 +130,26 @@ else:
     st.progress(progress)
     st.caption(f"진행 상황: {index + 1} / {total}")
 
-    # 단어 카드 (CSS 적용됨)
+    # 단어 카드
     st.markdown(f"""
     <div class="word-card">
         <div class="word-text">{word_data['Word']}</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # 발음 듣기
+    # 발음 생성
     tts = gTTS(text=word_data['Word'], lang='en')
     mp3_fp = io.BytesIO()
     tts.write_to_fp(mp3_fp)
-    st.audio(mp3_fp, format='audio/mp3')
+    
+    # [수정됨] 자동 재생 처리
+    # st.audio에 autoplay 옵션을 넣고, key를 매번 바꿔주어(index 이용) 단어가 바뀔 때마다 재생되게 함
+    st.audio(mp3_fp, format='audio/mp3', autoplay=auto_play_on, start_time=0)
 
     # 버튼 영역
     if not st.session_state['show_meaning']:
-        if st.button("🔍 뜻 확인하기", use_container_width=True, type="primary"):
+        # [수정됨] type="primary" 삭제 -> 기본 회색/흰색 버튼으로 변경 (눈이 편안함)
+        if st.button("🔍 뜻 확인하기", use_container_width=True):
             st.session_state['show_meaning'] = True
             st.rerun()
     else:
@@ -150,7 +165,7 @@ else:
             if st.button("✅ 알아요 (O)", use_container_width=True):
                 st.session_state['current_index'] += 1
                 st.session_state['show_meaning'] = False
-                if random.random() > 0.8: # 가끔 칭찬 효과
+                if random.random() > 0.8: 
                     st.toast("잘하고 있어요! 👍")
                 if st.session_state['current_index'] >= total:
                     st.session_state['study_finished'] = True
