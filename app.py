@@ -4,77 +4,67 @@ import random
 import os
 from gtts import gTTS
 import io
+import base64  # [추가됨] 오디오 파일을 코드로 변환하기 위해 필요
 
 # --- 설정 ---
 st.set_page_config(page_title="토익 영단어장", page_icon="📚")
 
-# CSS 스타일 (카드, 리스트, 탭 디자인)
+# CSS 스타일
 st.markdown("""
     <style>
-    /* 전체 폰트 및 배경 */
-    .stApp {
-        background-color: #ffffff;
-    }
-    /* 단어 공부 탭의 리스트 스타일 */
+    .stApp { background-color: #ffffff; }
+    
+    /* 리스트 모드 스타일 (클릭 가능하게 커서 변경) */
     .study-list-item {
-        padding: 15px 20px;
+        padding: 20px;
         background-color: #f8f9fa;
         border-radius: 10px;
         border-left: 5px solid #1f77b4;
-        margin-bottom: 10px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+        margin-bottom: 15px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        cursor: pointer; /* 손가락 모양 커서 */
+        transition: transform 0.1s;
     }
-    .study-word {
-        font-size: 20px;
-        font-weight: bold;
-        color: #333;
+    .study-list-item:active {
+        transform: scale(0.98); /* 클릭 시 살짝 눌리는 효과 */
+        background-color: #e3f2fd;
     }
-    .study-meaning {
-        font-size: 18px;
-        color: #555;
-    }
-    /* 시험 보기 탭의 카드 스타일 */
+    .study-word { font-size: 22px; font-weight: bold; color: #333; display: block; }
+    .study-meaning { font-size: 18px; color: #666; display: block; margin-top: 5px;}
+    
+    /* 퀴즈 카드 스타일 */
     .quiz-card {
-        padding: 40px;
-        border-radius: 15px;
+        padding: 50px;
+        border-radius: 20px;
         background-color: #fff;
         box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         text-align: center;
         margin: 20px 0;
         border: 2px solid #e0e0e0;
+        cursor: pointer;
+        transition: transform 0.1s;
     }
-    .quiz-word-text {
-        color: #333; 
-        font-size: 50px; 
-        font-weight: bold;
-        margin: 10px 0;
+    .quiz-card:active {
+        transform: scale(0.98);
+        border-color: #1f77b4;
+        background-color: #f0f8ff;
     }
+    .quiz-word-text { color: #333; font-size: 50px; font-weight: bold; }
+    .click-hint { font-size: 12px; color: #999; margin-top: 10px; }
+
+    /* 뜻 박스 */
     .meaning-box {
-        text-align: center; 
-        margin-bottom: 20px; 
-        padding: 15px; 
-        background-color: #e8f5e9; 
-        border-radius: 10px;
-        border: 1px solid #c8e6c9;
+        text-align: center; margin-bottom: 20px; padding: 15px;
+        background-color: #e8f5e9; border-radius: 10px; border: 1px solid #c8e6c9;
     }
-    .meaning-text {
-        color: #2e7d32; 
-        font-size: 24px;
-        font-weight: bold;
-        margin: 0;
-    }
-    /* 버튼 높이 조정 */
-    .stButton button {
-        height: 50px;
-        font-size: 18px;
-    }
+    .meaning-text { color: #2e7d32; font-size: 24px; font-weight: bold; margin: 0; }
+    
+    /* 버튼 크기 */
+    .stButton button { height: 50px; font-size: 18px; }
     </style>
 """, unsafe_allow_html=True)
 
-# 1. 데이터 로드 함수
+# 1. 데이터 로드
 @st.cache_data
 def load_data():
     try:
@@ -89,28 +79,42 @@ def load_data():
     except Exception as e:
         return None
 
+# [핵심 함수] 텍스트를 오디오 HTML 코드로 변환 (막대기 없이)
+def get_audio_html(text, unique_id):
+    tts = gTTS(text=text, lang='en')
+    mp3_fp = io.BytesIO()
+    tts.write_to_fp(mp3_fp)
+    mp3_fp.seek(0)
+    # 오디오를 base64 문자열로 변환
+    b64 = base64.b64encode(mp3_fp.read()).decode()
+    # HTML 생성: 오디오 태그는 숨기고(display:none), 자바스크립트로 재생
+    html = f"""
+        <audio id="audio_{unique_id}" style="display:none;">
+            <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+        </audio>
+        <script>
+            function play_{unique_id}() {{
+                var audio = document.getElementById("audio_{unique_id}");
+                audio.currentTime = 0;
+                audio.play();
+            }}
+        </script>
+    """
+    return html
+
 df = load_data()
 
-# --- 사이드바 (설정 영역) ---
+# --- 사이드바 ---
 st.sidebar.title("⚙️ 설정")
-
 if df is not None:
-    # 1. Day 선택
     days = sorted(df['Day'].unique().tolist(), key=lambda x: int(x) if x.isdigit() else 999)
     selected_day = st.sidebar.selectbox("공부할 DAY를 선택하세요", days)
-    
-    # 해당 Day 데이터 추출
     day_words_all = df[df['Day'] == selected_day][['Word', 'Meaning']].to_dict('records')
     
     st.sidebar.markdown("---")
-    
-    # 2. [위치 이동됨] 발음 자동 재생 토글
-    auto_play = st.sidebar.toggle("🔊 발음 자동 재생 (시험용)", value=True)
-    
     st.sidebar.caption(f"총 단어 수: {len(day_words_all)}개")
     
-    # 3. 시험 초기화 버튼
-    if st.sidebar.button("🔄 시험 시작"):
+    if st.sidebar.button("🔄 시험 초기화"):
         random.shuffle(day_words_all)
         st.session_state['quiz_data'] = day_words_all
         st.session_state['current_index'] = 0
@@ -122,45 +126,33 @@ else:
     st.error("CSV 파일을 찾을 수 없습니다.")
     st.stop()
 
-# --- 메인 화면: 탭 분리 ---
+# --- 메인 화면 ---
 st.title(f"📖 Day {selected_day} 마스터하기")
-
-# 탭 생성
 tab1, tab2 = st.tabs(["👀 단어 공부 (List)", "📝 실전 시험 (Test)"])
 
 # ==========================================
-# 탭 1: 단어 공부 모드 (리스트 보기 + 발음 듣기)
+# 탭 1: 단어 공부 (클릭해서 소리 듣기)
 # ==========================================
 with tab1:
     st.header("단어 목록 훑어보기")
-    st.caption("플레이 버튼(▶)을 누르면 발음을 들을 수 있어요.")
+    st.info("💡 단어 박스를 **클릭**하면 발음이 나옵니다!")
     
-    for item in day_words_all:
-        # 화면을 좌우로 분할 (왼쪽: 글자, 오른쪽: 오디오)
-        col1, col2 = st.columns([0.7, 0.3])
+    # 리스트 출력
+    for i, item in enumerate(day_words_all):
+        unique_id = f"list_{i}"
+        audio_html = get_audio_html(item['Word'], unique_id)
         
-        with col1:
-            # 기존 디자인 유지
-            st.markdown(f"""
-            <div class="study-list-item">
-                <span class="study-word">{item['Word']}</span>
-                <span class="study-meaning">{item['Meaning']}</span>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        with col2:
-            # 각 단어별 오디오 생성 (리스트 로딩 시 약간의 시간이 걸릴 수 있음)
-            try:
-                tts = gTTS(text=item['Word'], lang='en')
-                mp3_fp = io.BytesIO()
-                tts.write_to_fp(mp3_fp)
-                # 오디오 플레이어 표시 (여백 조정을 위해 padding 추가 가능)
-                st.audio(mp3_fp, format='audio/mp3')
-            except:
-                st.error("발음 로딩 실패")
+        # HTML 카드 (onclick 이벤트 추가)
+        st.markdown(f"""
+        {audio_html}
+        <div class="study-list-item" onclick="document.getElementById('audio_{unique_id}').play()">
+            <span class="study-word">{item['Word']} 🔊</span>
+            <span class="study-meaning">{item['Meaning']}</span>
+        </div>
+        """, unsafe_allow_html=True)
 
 # ==========================================
-# 탭 2: 시험 보기 모드 (퀴즈 기능)
+# 탭 2: 실전 시험 (박스 클릭 재생)
 # ==========================================
 with tab2:
     if 'quiz_data' not in st.session_state:
@@ -168,24 +160,16 @@ with tab2:
     
     elif st.session_state['study_finished']:
         st.balloons()
-        st.success("🎉 시험 종료! 결과가 나왔습니다.")
-        
+        st.success("🎉 시험 종료!")
         score = len(st.session_state['quiz_data']) - len(st.session_state['wrong_answers'])
         total_q = len(st.session_state['quiz_data'])
         st.metric("내 점수", f"{score} / {total_q}점")
 
         if st.session_state['wrong_answers']:
-            st.write("### ❌ 틀린 문제 (오답노트)")
+            st.write("### ❌ 틀린 문제")
             wrong_df = pd.DataFrame(st.session_state['wrong_answers'])
             st.table(wrong_df)
-            
-            csv = wrong_df.to_csv(index=False).encode('utf-8-sig')
-            st.download_button("오답노트 다운로드 (CSV)", csv, 'wrong_notes.csv', 'text/csv')
-        else:
-            st.write("완벽합니다! 💯 하나도 틀리지 않았어요.")
-            
     else:
-        # 현재 문제 데이터
         index = st.session_state['current_index']
         total = len(st.session_state['quiz_data'])
         word_data = st.session_state['quiz_data'][index]
@@ -194,20 +178,23 @@ with tab2:
         st.progress((index / total))
         st.caption(f"문제 {index + 1} / {total}")
 
-        # 단어 카드
+        # --- [핵심] 오디오 생성 및 카드 렌더링 ---
+        unique_id = f"quiz_{index}"
+        audio_html = get_audio_html(word_data['Word'], unique_id)
+
+        # 퀴즈 카드 (onclick 추가)
         st.markdown(f"""
-        <div class="quiz-card">
+        {audio_html}
+        <div class="quiz-card" onclick="document.getElementById('audio_{unique_id}').play()">
             <div class="quiz-word-text">{word_data['Word']}</div>
+            <div class="click-hint">👆 클릭해서 발음 듣기</div>
         </div>
         """, unsafe_allow_html=True)
+        # --------------------------------------
 
-        # 발음 재생 (사이드바의 auto_play 변수 사용)
-        tts = gTTS(text=word_data['Word'], lang='en')
-        mp3_fp = io.BytesIO()
-        tts.write_to_fp(mp3_fp)
-        st.audio(mp3_fp, format='audio/mp3', autoplay=auto_play, start_time=0)
+        # 문제 넘어가면 자동으로 한 번 재생 (선택 사항 - 싫으면 이 줄 삭제)
+        st.markdown(f"<script>document.getElementById('audio_{unique_id}').play();</script>", unsafe_allow_html=True)
 
-        # 버튼 인터페이스
         if not st.session_state['show_meaning']:
             if st.button("🔍 정답 확인", use_container_width=True):
                 st.session_state['show_meaning'] = True
@@ -227,15 +214,12 @@ with tab2:
                     if st.session_state['current_index'] >= total:
                         st.session_state['study_finished'] = True
                     st.rerun()
-            
             with col2:
                 if st.button("❌ 틀렸음", use_container_width=True):
                     st.session_state['wrong_answers'].append(word_data)
-                    st.toast(f"🥲 오답노트 저장! ({len(st.session_state['wrong_answers'])}개째)")
+                    st.toast(f"🥲 오답노트 저장!")
                     st.session_state['current_index'] += 1
                     st.session_state['show_meaning'] = False
                     if st.session_state['current_index'] >= total:
                         st.session_state['study_finished'] = True
                     st.rerun()
-
-
